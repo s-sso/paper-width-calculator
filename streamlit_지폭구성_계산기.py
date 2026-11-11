@@ -26,10 +26,10 @@ with st.sidebar:
     edge_right = st.number_input("우측 여폭 (mm)", min_value=0, max_value=100, value=12, step=1)
     edge_each = edge_left
     per_width_allowance = edge_left + edge_right
-    st.caption(f"지폭 1개당 여폭: {per_width_allowance} mm · 전체 여폭: {per_width_allowance*int(n)} mm")
     st.divider()
     st.header("구성 조건")
     n = st.number_input("구성 지폭 개수 (n)", min_value=1, max_value=20, value=5, step=1)
+    st.caption(f"지폭 1개당 여폭: {per_width_allowance} mm · 전체 여폭: {per_width_allowance*int(n)} mm")
     test_width = st.number_input("TEST 등급 지폭 (a, mm)", min_value=100, max_value=deckle, value=800, step=10)
     st.caption("※ 각 지폭의 제품 폭에 좌/우 여폭 12 mm씩 별도 적용합니다.")
 
