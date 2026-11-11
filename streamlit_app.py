@@ -7,6 +7,7 @@ from typing import List, Tuple
 
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
 
 st.set_page_config(
     page_title="지폭 구성 계산기",
@@ -16,7 +17,7 @@ st.set_page_config(
 )
 
 # -----------------------------------------------------------------------------
-# Theme / layout
+# Theme / layout — compact header + isolated SVG renderer (v3)
 # -----------------------------------------------------------------------------
 CSS = r"""
 <style>
@@ -35,17 +36,17 @@ section[data-testid="stSidebar"] {
   border-right:1px solid #dce4f7;
   min-width:300px; max-width:300px;
 }
-section[data-testid="stSidebar"] > div { padding-top:6.6rem; }
-section[data-testid="stMain"] > div { padding-top:6.45rem; padding-left:1.05rem; padding-right:1.05rem; max-width:none; }
+section[data-testid="stSidebar"] > div { padding-top:4.85rem; }
+section[data-testid="stMain"] > div { padding-top:4.55rem; padding-left:1.05rem; padding-right:1.05rem; max-width:none; }
 .global-header {
-  position:fixed; z-index:999999; top:0; left:0; width:100vw; height:98px;
+  position:fixed; z-index:999999; top:0; left:0; width:100vw; height:68px;
   background:linear-gradient(105deg,#1a2b55 0%,#2d416f 52%,#17264b 100%);
   box-shadow:0 4px 18px rgba(18,35,76,.18); display:flex; align-items:center;
-  padding:0 28px; box-sizing:border-box; color:white;
+  padding:0 20px; box-sizing:border-box; color:white;
 }
-.brand-icon { width:67px; height:67px; margin-right:19px; flex:0 0 auto; }
-.brand-title { font-size:29px; line-height:1.15; font-weight:900; letter-spacing:-1.2px; color:#fff; white-space:nowrap; }
-.brand-sub { font-size:14px; margin-top:5px; color:#e3eaff; font-weight:500; white-space:nowrap; }
+.brand-icon { width:48px; height:48px; margin-right:13px; flex:0 0 auto; }
+.brand-title { font-size:23px; line-height:1.12; font-weight:900; letter-spacing:-1.2px; color:#fff; white-space:nowrap; }
+.brand-sub { font-size:11px; margin-top:3px; color:#e3eaff; font-weight:500; white-space:nowrap; }
 .sidebar-title { font-size:22px; font-weight:900; color:#15254d; margin:0 0 18px 0; letter-spacing:-.7px; }
 .sidebar-section { font-size:17px; font-weight:800; color:#18264a; margin:16px 0 8px; }
 .sidebar-note {font-size:12px;color:#697792; line-height:1.5; margin-top:2px;}
@@ -60,16 +61,16 @@ div[data-testid="stRadio"] > label {font-size:15px!important;}
 }
 .stButton > button:hover {filter:brightness(1.04); border:0!important;}
 .summary-card {
-  min-height:108px; border-radius:15px; border:1px solid #d8e2f7;
+  min-height:82px; border-radius:15px; border:1px solid #d8e2f7;
   background:linear-gradient(145deg,#ffffff 0%,#f0f4ff 100%);
   box-shadow:0 2px 7px rgba(35,59,115,.035); padding:13px 13px 11px;
   display:flex; align-items:center; gap:12px; box-sizing:border-box;
 }
 .summary-card.violet {background:linear-gradient(145deg,#f6f5ff,#e9eaff); border-color:#d8d8ff;}
 .summary-card.blue {background:linear-gradient(145deg,#f0f6ff,#e3edff); border-color:#cedeff;}
-.summary-icon {width:44px;height:44px;flex:0 0 44px;color:#51639b;}
+.summary-icon {width:36px;height:36px;flex:0 0 36px;color:#51639b;}
 .summary-label {font-size:13px;color:#29375b;font-weight:800;white-space:nowrap;margin-bottom:4px;}
-.summary-value {font-size:23px;line-height:1.2;font-weight:900;color:#111b3a;white-space:nowrap;letter-spacing:-.7px;}
+.summary-value {font-size:20px;line-height:1.15;font-weight:900;color:#111b3a;white-space:nowrap;letter-spacing:-.7px;}
 .summary-value small {font-size:14px;font-weight:800;letter-spacing:0;}
 .summary-sub {font-size:11px;color:#586783;font-weight:600;margin-top:3px;white-space:nowrap;}
 .section-title {font-size:22px;font-weight:900;color:#101b3b;letter-spacing:-.6px;display:flex;align-items:center;gap:11px;margin:4px 0 8px;}
@@ -86,7 +87,7 @@ div[data-testid="stRadio"] > label {font-size:15px!important;}
 .kv:last-child{border-bottom:0;}
 .kv .k{font-weight:750;color:#293650;}
 .kv .v{font-weight:850;color:#111a32;text-align:right;}
-.roll-wrap {margin-top:6px;margin-bottom:9px;}
+.roll-wrap {margin-top:2px;margin-bottom:3px;}
 .roll-caption {font-size:12px;color:#8290a8;margin:0 0 4px 2px;}
 .width-table {width:100%;border-collapse:separate;border-spacing:0;overflow:hidden;border-radius:10px;font-size:12px;}
 .width-table th {background:#eaf0fc;color:#293755;padding:8px 5px;font-weight:850;border-right:1px solid #dce5f3;border-bottom:1px solid #dce5f3;text-align:center;}
@@ -103,9 +104,9 @@ hr {border-color:#e7ecf5!important;}
  .summary-card{gap:6px;padding:10px 7px;}.summary-icon{width:30px;height:30px;flex-basis:30px;}.summary-value{font-size:18px;}
 }
 @media(max-width:800px){
- .global-header{height:82px;padding:0 16px}.brand-title{font-size:22px}.brand-sub{font-size:11px}.brand-icon{width:48px;height:48px}
- section[data-testid="stMain"] > div{padding-top:5.7rem;padding-left:.55rem;padding-right:.55rem}
- section[data-testid="stSidebar"] > div{padding-top:5.7rem}
+ .global-header{height:62px;padding:0 14px}.brand-title{font-size:21px}.brand-sub{font-size:10px}.brand-icon{width:42px;height:42px}
+ section[data-testid="stMain"] > div{padding-top:4.35rem;padding-left:.55rem;padding-right:.55rem}
+ section[data-testid="stSidebar"] > div{padding-top:4.35rem}
 }
 </style>
 """
@@ -364,7 +365,7 @@ for col, (ico, label, value, unit, sub, tone) in zip(card_cols, cards):
     with col:
         st.markdown(f'''<div class="summary-card {tone}"><div>{icon_svg}</div><div><div class="summary-label">{label}</div><div class="summary-value">{value} <small>{unit}</small></div><div class="summary-sub">{sub or '&nbsp;'}</div></div></div>''', unsafe_allow_html=True)
 
-st.markdown("<hr style='margin:12px 0 12px;'>", unsafe_allow_html=True)
+st.markdown("<hr style='margin:7px 0 7px;'>", unsafe_allow_html=True)
 st.markdown('<div class="section-title"><span class="section-icon">▥</span> 지폭 구성 결과</div>', unsafe_allow_html=True)
 
 if calculation_error:
@@ -377,13 +378,21 @@ else:
     remainder = deckle - total_required
 
     # Roll labels / dimension arrow
-    st.markdown(f'''<div style="text-align:center;margin:2px 0 2px;"><span class="total-pill">전체 지폭 : {fmt_mm(deckle)} mm</span></div>
-    <div style="text-align:center;margin:0 0 -1px;"><span class="info-pill">제품 폭 합계 : {fmt_mm(product_sum)} mm &nbsp; | &nbsp; 총 여폭 : {fmt_mm(actual_trim)} mm <span style="font-size:11px;font-weight:700">({fmt_mm(per_width_trim)} mm × {len(all_widths)})</span></span></div>''', unsafe_allow_html=True)
+    st.markdown(f'''<div style="text-align:center;margin:0 0 1px;"><span class="total-pill">전체 지폭 : {fmt_mm(deckle)} mm</span></div>
+    <div style="text-align:center;margin:0 0 -2px;"><span class="info-pill">제품 폭 합계 : {fmt_mm(product_sum)} mm &nbsp; | &nbsp; 총 여폭 : {fmt_mm(actual_trim)} mm <span style="font-size:11px;font-weight:700">({fmt_mm(per_width_trim)} mm × {len(all_widths)})</span></span></div>''', unsafe_allow_html=True)
     # dimension line as SVG
-    st.markdown(f'''<svg viewBox="0 0 1200 36" width="100%" height="32" role="img" aria-label="전체 지폭 치수"><path d="M70 20 H1130 M70 8 V29 M1130 8 V29 M70 20 l10 -6 M70 20 l10 6 M1130 20 l-10 -6 M1130 20 l-10 6" fill="none" stroke="#172b64" stroke-width="2.2" stroke-linecap="round"/></svg>''', unsafe_allow_html=True)
-    st.markdown(f'<div style="text-align:center;font-size:12px;color:#64718a;font-weight:800;margin:-2px 0 -3px;">각 지폭 좌측 {fmt_mm(left_trim)} mm · 우측 {fmt_mm(right_trim)} mm 여폭</div>', unsafe_allow_html=True)
-    st.markdown('<div class="roll-wrap">'+build_roll_svg(deckle, all_widths, left_trim, right_trim)+'</div>', unsafe_allow_html=True)
-    st.markdown(f'''<div style="text-align:center;font-size:11px;color:#7c879b;margin:-1px 0 12px;">주황색 = TEST 지폭 · 파란색 계열 = 일반 지폭 · 각 구획 양쪽 회색 사선 = 해당 지폭 여폭 ({fmt_mm(left_trim)} mm / {fmt_mm(right_trim)} mm)</div>''', unsafe_allow_html=True)
+    st.markdown(f'''<svg viewBox="0 0 1200 36" width="100%" height="24" role="img" aria-label="전체 지폭 치수"><path d="M70 20 H1130 M70 8 V29 M1130 8 V29 M70 20 l10 -6 M70 20 l10 6 M1130 20 l-10 -6 M1130 20 l-10 6" fill="none" stroke="#172b64" stroke-width="2.2" stroke-linecap="round"/></svg>''', unsafe_allow_html=True)
+    st.markdown(f'<div style="text-align:center;font-size:11px;color:#64718a;font-weight:800;margin:-3px 0 -4px;">각 지폭 좌측 {fmt_mm(left_trim)} mm · 우측 {fmt_mm(right_trim)} mm 여폭</div>', unsafe_allow_html=True)
+    # SVG source is rendered in an isolated HTML iframe. Using st.markdown here
+    # causes Streamlit's Markdown parser to expose multi-line SVG markup as text.
+    roll_svg = build_roll_svg(deckle, all_widths, left_trim, right_trim)
+    roll_html = f'''<!doctype html>
+    <html><head><meta charset="utf-8"><style>
+      html,body{{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:transparent;}}
+      svg{{display:block;width:100%;height:100%;}}
+    </style></head><body>{roll_svg.replace('<svg ', '<svg preserveAspectRatio="none" ')}</body></html>'''
+    components.html(roll_html, height=194, scrolling=False)
+    st.markdown(f'''<div style="text-align:center;font-size:10px;color:#7c879b;margin:-2px 0 6px;">주황색 = TEST 지폭 · 파란색 계열 = 일반 지폭 · 각 구획 양쪽 회색 사선 = 해당 지폭 여폭 ({fmt_mm(left_trim)} mm / {fmt_mm(right_trim)} mm)</div>''', unsafe_allow_html=True)
 
     # Details and summary panels
     df = pd.DataFrame({

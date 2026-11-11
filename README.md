@@ -1,29 +1,17 @@
-# 지폭 구성 계산기 (v2)
+# 지폭 구성 계산기 v3
 
-Streamlit 기반 지폭 구성 계산기입니다.
+Streamlit 앱입니다.
 
-## 파일
-- `streamlit_app.py`: Streamlit 앱 본체
-- `requirements.txt`: Python 패키지
-- `packages.txt`: Streamlit Cloud 시스템 패키지
+## 실행
 
-## Streamlit Community Cloud 배포
-1. 이 폴더의 파일 4개를 GitHub 저장소 루트에 업로드합니다.
-2. Streamlit Community Cloud에서 저장소와 브랜치를 선택합니다.
-3. Main file path는 `streamlit_app.py`로 지정합니다.
-4. Deploy를 누릅니다.
-
-## 로컬 실행
 ```bash
 pip install -r requirements.txt
 streamlit run streamlit_app.py
 ```
 
-## 주요 기능
-- 전체 지폭 및 지폭 개수 설정
-- TEST 폭 설정
-- 지폭별 좌·우 여폭 설정
-- 균등 분할, 직접 입력, 폭 조합 검색
-- 원통형 롤 분할 SVG 시각화
-- 지폭별 상세표, 구성 요약, 확인 항목
-- CSV 내보내기
+## Streamlit Community Cloud
+- Repository: GitHub 저장소
+- Branch: main
+- Main file path: `streamlit_app.py`
+
+v3 변경사항: SVG를 Streamlit Components HTML iframe에서 렌더링하여 SVG 원문이 본문에 노출되지 않도록 수정했습니다. 상단 헤더를 68px로 축소하고 상단 여백 및 원통 그래픽 영역을 줄였습니다.
