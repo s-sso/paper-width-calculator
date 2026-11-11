@@ -1,10 +1,21 @@
-# 지폭 구성 계산기
+# Paper Width Calculator v2
 
-Streamlit Community Cloud 배포용 파일입니다.
+Streamlit app for paper-width configuration.
 
-## 배포 설정
-- Repository: 본 GitHub 저장소
-- Branch: main
-- Main file path: `streamlit_지폭구성_계산기.py`
+## Files
+- `streamlit_app.py`: Streamlit application
+- `requirements.txt`: Python dependencies
+- `packages.txt`: system packages for Streamlit Cloud
 
-필요 패키지는 `requirements.txt`에 정의되어 있습니다.
+## Deploy to Streamlit Community Cloud
+- Repository: your GitHub repository
+- Branch: `main` (or the actual branch)
+- Main file path: `streamlit_app.py`
+
+Upload all four files to the root of your GitHub repository, then set the main file path to `streamlit_app.py`.
+
+## Run locally
+```bash
+pip install -r requirements.txt
+streamlit run streamlit_app.py
+```
