@@ -1,0 +1,1 @@
+Replace the repository's streamlit_app.py with the included file. Existing requirements.txt and packages.txt can remain unchanged.
