@@ -1,25 +1,25 @@
-# 지폭 구성 계산기 v4
+# 지폭 구성 계산기 v5
 
 Streamlit 기반 지폭 구성 시뮬레이터입니다.
 
-## 실행 방법
+## 실행
 
 ```bash
 pip install -r requirements.txt
 streamlit run streamlit_app.py
 ```
 
-## Streamlit Community Cloud 배포 설정
+## Streamlit Community Cloud
 
-- Repository: GitHub 저장소
 - Branch: `main`
 - Main file path: `streamlit_app.py`
 
-## v4 주요 변경사항
+## v5 변경사항
 
-- TEST 지폭을 1~5개까지 개별 설정
-- TEST 1~TEST 5 각각의 제품 폭과 배치 위치 선택
-- 지정한 TEST 배치 순서에 따라 롤 시각화, 상세 표, 요약 순서 동기화
-- SVG의 `preserveAspectRatio`를 사용해 글자가 늘어나거나 찌그러지는 문제 방지
-- 롤 위의 좌측/우측 여폭 안내 문구 제거
-- 여폭은 모든 지폭의 제품 폭에 각각 적용
+- 롤 시각화 바로 아래에 각 지폭과 정렬된 제품 폭 입력란 추가
+- TEST 폭 입력은 사이드바와 롤 아래 입력란이 양방향 동기화
+- 일반 지폭을 롤 아래에서 수정하면 폭 직접 입력 모드로 자동 전환
+- 폭 합계가 일시적으로 맞지 않아도 입력란과 롤 미리보기가 유지되어 나머지 폭을 계속 수정 가능
+- 실제 합계가 맞지 않을 때는 확인 패널이 경고 상태로 전환
+- 왼쪽 계산기와 오른쪽 메인 화면의 상단 여백 축소
+- 계산·표·요약·CSV는 변경된 지폭과 순서를 반영
