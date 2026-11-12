@@ -1,1 +1,1 @@
-Replace the existing GitHub streamlit_app.py with the included streamlit_app.py. Keep requirements.txt and packages.txt unchanged. This version migrates the previous manual-mode state and recomputes every non-overridden general slit from the remaining width.
+Replace the existing GitHub streamlit_app.py with the included file renamed to streamlit_app.py. Keep requirements.txt and packages.txt unchanged. This version uses explicit JSON component messages and starts with a clean v20 manual-width override map.
