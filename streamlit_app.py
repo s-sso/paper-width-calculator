@@ -96,19 +96,43 @@ def _apply_pending_roll_edit(state, payload, manual_mode: str) -> None:
         return
 
     overrides = dict(state.get(MANUAL_OVERRIDES_KEY, {}))
-    for seg in payload.get("segments", []):
+    changed_kind = payload.get("changed_kind")
+    changed_index = payload.get("changed_index")
+    candidate_segments = payload.get("segments", [])
+
+    # The frontend normally sends one segment. If an old/cached iframe sends
+    # the full roll, accept ONLY the input the user actually changed.
+    selected_segment = None
+    for candidate in candidate_segments:
+        try:
+            candidate_index = (
+                int(candidate.get("test_no", -1))
+                if candidate.get("kind") == "TEST"
+                else int(candidate.get("general_idx", -1))
+            )
+        except (TypeError, ValueError):
+            continue
+        if candidate.get("kind") == changed_kind and candidate_index == int(changed_index):
+            selected_segment = candidate
+            break
+    if selected_segment is None and len(candidate_segments) == 1:
+        selected_segment = candidate_segments[0]
+
+    if selected_segment is not None:
+        seg = selected_segment
         try:
             width = max(0.0, min(20000.0, float(seg.get("width", 0))))
         except (TypeError, ValueError):
-            continue
-        if seg.get("kind") == "TEST":
+            width = None
+
+        if width is not None and seg.get("kind") == "TEST":
             test_no = int(seg.get("test_no", 0))
             if 1 <= test_no <= 5:
                 state[f"test_width_{test_no}"] = width
-        elif seg.get("kind") == "NORMAL":
+        elif width is not None and seg.get("kind") == "NORMAL":
             general_idx = int(seg.get("general_idx", -1))
             if 0 <= general_idx < 20:
-                # Keep previous explicit edits, add/update the slit just edited on the roll.
+                # Only the directly edited normal slit is fixed; untouched slits rebalance.
                 overrides[general_idx] = width
 
     state[MANUAL_OVERRIDES_KEY] = overrides
