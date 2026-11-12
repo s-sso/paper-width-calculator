@@ -24,19 +24,20 @@ MANUAL_MODE = "폭 직접 입력\n(사용자 지정)"
 # Migrate sessions created by v17, which stored a literal "\\n" in the radio value.
 if st.session_state.get("mode_choice") == r"폭 직접 입력\n(사용자 지정)":
     st.session_state["mode_choice"] = MANUAL_MODE
-MANUAL_OVERRIDES_KEY = "_manual_width_overrides_v24"
-MANUAL_OVERRIDES_INIT_KEY = "_manual_width_overrides_v24_initialized"
-# v24 uses blank optional sidebar inputs. Only non-empty values are fixed.
-# This avoids guessing whether a displayed/calculated number was manually edited.
-if not st.session_state.get(MANUAL_OVERRIDES_INIT_KEY, False):
-    st.session_state[MANUAL_OVERRIDES_KEY] = {}
-    st.session_state[MANUAL_OVERRIDES_INIT_KEY] = True
-else:
-    st.session_state.setdefault(MANUAL_OVERRIDES_KEY, {})
+OVERWIDTH_ALLOWANCE_MM = 40.0
+MANUAL_OVERRIDES_KEY = "_manual_width_overrides_v25"
+# Keep prior explicitly-entered manual slit widths when upgrading from v24.
+if MANUAL_OVERRIDES_KEY not in st.session_state:
+    st.session_state[MANUAL_OVERRIDES_KEY] = dict(
+        st.session_state.get("_manual_width_overrides_v24", {})
+    )
 
-def _calculate_manual_distribution(target: float, count: int, overrides: dict):
-    """Return evenly balanced widths, keeping only explicit overrides fixed."""
+def _calculate_manual_distribution(
+    target: float, count: int, overrides: dict, max_target: float | None = None
+):
+    """Balance untouched widths to the nominal target, with a bounded overwidth allowance."""
     count = max(0, int(count))
+    max_target = float(target) + OVERWIDTH_ALLOWANCE_MM if max_target is None else float(max_target)
     fixed = {}
     for key, value in (overrides or {}).items():
         try:
@@ -53,36 +54,40 @@ def _calculate_manual_distribution(target: float, count: int, overrides: dict):
 
     auto_indices = [i for i in range(count) if i not in fixed]
     fixed_total = sum(fixed.values())
-    remaining = float(target) - fixed_total
 
-    if remaining < -1e-7:
+    if fixed_total > max_target + 1e-7:
         return widths, set(fixed), set(auto_indices), (
-            f"직접 입력한 일반 지폭 합계가 목표 폭을 초과했습니다. "
-            f"직접 입력 합계 {fixed_total:,.2f} mm / 목표 {target:,.2f} mm"
+            f"직접 입력한 일반 지폭 합계가 허용 상한을 초과했습니다. "
+            f"직접 입력 합계 {fixed_total:,.2f} mm / 허용 최대 {max_target:,.2f} mm"
         )
 
+    # Under the nominal target, automatic widths fill to 4850mm as before.
+    # Once explicit entries exceed the nominal target, use only the remaining
+    # +40mm tolerance capacity so the final total never exceeds the allowed limit.
+    effective_target = float(target)
+    if fixed_total > target + 1e-7:
+        effective_target = max_target
+
+    remaining = max(0.0, effective_target - fixed_total)
     if auto_indices:
-        # Display at 0.01 mm precision and put the rounding residue in the final
-        # automatic slit, so the displayed widths still sum exactly to the target.
-        if remaining < 0:
-            remaining = 0.0
         each = round(remaining / len(auto_indices), 2)
         for idx in auto_indices[:-1]:
             widths[idx] = each
         widths[auto_indices[-1]] = remaining - each * (len(auto_indices) - 1)
         return widths, set(fixed), set(auto_indices), None
 
-    if abs(remaining) > 1e-6:
+    # All widths were explicitly entered. The target may be nominal or up to +40mm.
+    if fixed_total < target - 1e-6:
         return widths, set(fixed), set(), (
-            f"직접 입력한 일반 지폭 합계가 목표와 다릅니다. "
-            f"일반 지폭 합계는 {target:,.2f} mm여야 합니다. 현재 {fixed_total:,.2f} mm입니다."
+            f"직접 입력한 일반 지폭 합계가 기준 폭보다 작습니다. "
+            f"기준 합계 {target:,.2f} mm / 현재 {fixed_total:,.2f} mm"
         )
     return widths, set(fixed), set(), None
 
 
 def _store_manual_sidebar_override(index: int) -> None:
     # Empty means "automatic"; a committed number is an explicit fixed width.
-    key = f"manual_general_v24_widget_{index}"
+    key = f"manual_general_v25_widget_{index}"
     raw_value = st.session_state.get(key)
     overrides = dict(st.session_state.get(MANUAL_OVERRIDES_KEY, {}))
     if raw_value is None or raw_value == "":
@@ -147,7 +152,7 @@ def _apply_pending_roll_edit(state, payload, manual_mode: str) -> None:
                 # Only the directly edited normal slit is fixed; untouched slits rebalance.
                 overrides[general_idx] = width
                 # Mirror the roll edit into the corresponding optional sidebar input.
-                state[f"manual_general_v24_widget_{general_idx}"] = width
+                state[f"manual_general_v25_widget_{general_idx}"] = width
 
     state[MANUAL_OVERRIDES_KEY] = overrides
     if payload.get("changed_kind") == "NORMAL":
@@ -253,6 +258,9 @@ div[data-testid="stNumberInput"].roll-width-input input {text-align:center!impor
 .warning-panel {background:linear-gradient(145deg,#fff8ed,#fffdf8);border:1px solid #f2d6aa;border-radius:15px;overflow:hidden;box-shadow:0 2px 10px rgba(160,105,25,.03);}
 .warning-title {background:linear-gradient(90deg,#fff0d5,#fff8eb);color:#9a5a00;font-size:18px;font-weight:900;padding:10px 13px;display:flex;gap:9px;align-items:center;}
 .warning-content {padding:10px 13px 13px;}
+.tolerance-panel {background:linear-gradient(145deg,#f0f7ff,#fbfdff);border:1px solid #c9dcff;border-radius:15px;overflow:hidden;box-shadow:0 2px 10px rgba(40,95,180,.04);}
+.tolerance-title {background:linear-gradient(90deg,#e4efff,#f1f6ff);color:#24529a;font-size:18px;font-weight:900;padding:10px 13px;display:flex;gap:9px;align-items:center;}
+.tolerance-content {padding:10px 13px 13px;}
 .roll-caption {font-size:12px;color:#8290a8;margin:0 0 4px 2px;}
 .width-table {width:100%;border-collapse:separate;border-spacing:0;overflow:hidden;border-radius:10px;font-size:12px;}
 .width-table th {background:#eaf0fc;color:#293755;padding:8px 5px;font-weight:850;border-right:1px solid #dce5f3;border-bottom:1px solid #dce5f3;text-align:center;}
@@ -438,10 +446,10 @@ ROLL_COMPONENT_HTML = r"""<!doctype html>
 </script>
 </body>
 </html>"""
-_COMPONENT_DIR = Path(tempfile.gettempdir()) / "paper_width_calculator_roll_component_v24"
+_COMPONENT_DIR = Path(tempfile.gettempdir()) / "paper_width_calculator_roll_component_v25"
 _COMPONENT_DIR.mkdir(parents=True, exist_ok=True)
 (_COMPONENT_DIR / "index.html").write_text(ROLL_COMPONENT_HTML, encoding="utf-8")
-roll_width_editor = components.declare_component("roll_width_editor_v24", path=str(_COMPONENT_DIR))
+roll_width_editor = components.declare_component("roll_width_editor_v25", path=str(_COMPONENT_DIR))
 
 # -----------------------------------------------------------------------------
 # SVG roll illustration
@@ -571,9 +579,13 @@ with st.sidebar:
     st.markdown('<div class="sidebar-title">⚙️ 입력 조건</div>', unsafe_allow_html=True)
     st.markdown('<div class="sidebar-section first-sidebar-section">전체 지폭 (고정)</div>', unsafe_allow_html=True)
     deckle = st.number_input("전체 지폭 (mm)", min_value=100.0, max_value=20000.0, value=4850.0, step=10.0, key="deckle", label_visibility="collapsed")
+    max_total_width = deckle + OVERWIDTH_ALLOWANCE_MM
+    st.caption(f"기준 폭 {deckle:,.0f} mm · 허용 최대 {max_total_width:,.0f} mm (+{OVERWIDTH_ALLOWANCE_MM:.0f} mm)")
 
-    st.markdown('<div class="sidebar-section">구성할 지폭 개수 (n)</div>', unsafe_allow_html=True)
-    n = int(st.number_input("구성할 지폭 개수", min_value=1, max_value=20, value=5, step=1, key="n", label_visibility="collapsed"))
+    st.markdown('<div class="sidebar-section">구성할 지폭 개수 (2~8개)</div>', unsafe_allow_html=True)
+    if "n" in st.session_state:
+        st.session_state["n"] = max(2, min(8, int(st.session_state["n"])))
+    n = int(st.number_input("구성할 지폭 개수", min_value=2, max_value=8, value=5, step=1, key="n", label_visibility="collapsed"))
 
     max_test_count = min(5, n)
     if int(st.session_state.get("test_count", 1)) > max_test_count:
@@ -650,13 +662,14 @@ with st.sidebar:
             target=deckle - n * (left_trim + right_trim) - test_total,
             count=general_count,
             overrides=overrides,
+            max_target=max_total_width - n * (left_trim + right_trim) - test_total,
         )
 
         if distribution_error:
             st.warning(distribution_error)
 
         for i in range(general_count):
-            widget_key = f"manual_general_v24_widget_{i}"
+            widget_key = f"manual_general_v25_widget_{i}"
             is_fixed = i in fixed_indices
 
             # A blank input is the unambiguous "automatic" state.
@@ -701,23 +714,23 @@ per_width_trim = left_trim + right_trim
 total_trim = per_width_trim * n
 product_target = deckle - total_trim
 general_target = product_target - test_total
+max_product_target = max_total_width - total_trim
+max_general_target = max_product_target - test_total
 general_widths: List[float] = []
 calculation_error = None
 search_matches: List[Tuple[float, ...]] = []
 
-if product_target < -1e-9:
-    calculation_error = "지폭별 여폭 합계가 전체 지폭을 초과합니다. 여폭 또는 지폭 개수를 줄여주세요."
-elif test_total > product_target + 1e-9:
-    calculation_error = "TEST 제품 폭 합계가 여폭을 제외한 유효 제품 폭보다 큽니다. TEST 폭을 줄여주세요."
-elif general_count == 0 and abs(general_target) > 1e-6:
-    calculation_error = f"일반 지폭이 없으므로 TEST 제품 폭 합계가 {product_target:,.1f} mm여야 합니다."
-elif general_target < -1e-9:
-    calculation_error = "TEST 제품 폭 합계가 나머지 일반 지폭을 배치할 수 있는 폭을 초과합니다."
+if max_product_target < -1e-9:
+    calculation_error = f"여폭 합계가 허용 최대 폭 {max_total_width:,.0f} mm를 초과합니다. 여폭 또는 지폭 개수를 줄여주세요."
+elif test_total > max_product_target + 1e-9:
+    calculation_error = f"TEST 제품 폭 합계가 허용 최대 폭 {max_total_width:,.0f} mm에서 여폭을 제외한 폭을 초과합니다."
+elif general_count == 0 and general_target > 1e-6:
+    calculation_error = f"일반 지폭이 없으므로 TEST 제품 폭 합계가 기준 폭 {product_target:,.1f} mm 이상이어야 합니다."
 else:
     if general_count == 0:
         general_widths = []
     elif mode.startswith("균등 분할"):
-        each = general_target / general_count
+        each = max(0.0, general_target) / general_count
         general_widths = [float(each)] * general_count
     elif mode.startswith("폭 직접 입력"):
         # Single source of truth: calculate again from explicitly edited widths.
@@ -728,6 +741,7 @@ else:
             target=general_target,
             count=general_count,
             overrides=current_overrides,
+            max_target=max_general_target,
         )
     else:
         scale = 2  # half-mm precision
@@ -834,7 +848,7 @@ cards = [
     ("▱", "지폭 개수", f"{n}", "개", f"TEST {test_count}개 포함", ""),
     ("↔", "지폭별 여폭", fmt_mm(per_width_trim), "mm", f"(좌 {fmt_mm(left_trim)} + 우 {fmt_mm(right_trim)})", ""),
     ("☑", "총 여폭", fmt_mm(total_trim), "mm", f"({fmt_mm(per_width_trim)} mm × {n})", "violet"),
-    ("☑", "제품 폭 합계", fmt_mm(product_width_for_display), "mm", "", "blue"),
+    ("☑", "제품 폭 합계", fmt_mm(product_width_for_display), "mm", f"기준 {fmt_mm(deckle)} · 허용 최대 {fmt_mm(max_total_width)}", "blue"),
 ]
 card_cols = st.columns([1.12, .92, 1.12, 1.08, 1.12], gap="small")
 for col, (ico, label, value, unit, sub, tone) in zip(card_cols, cards):
@@ -864,12 +878,13 @@ else:
 
     # Roll labels / dimension arrow
     st.markdown(f'''<div style="text-align:center;margin:0 0 1px;"><span class="total-pill">전체 지폭 : {fmt_mm(deckle)} mm</span></div>
-    <div style="text-align:center;margin:0 0 -2px;"><span class="info-pill">제품 폭 합계 : {fmt_mm(product_sum)} mm &nbsp; | &nbsp; 총 여폭 : {fmt_mm(actual_trim)} mm <span style="font-size:11px;font-weight:700">({fmt_mm(per_width_trim)} mm × {len(all_widths)})</span></span></div>''', unsafe_allow_html=True)
+    <div style="text-align:center;margin:0 0 -2px;"><span class="info-pill">제품 폭 합계 : {fmt_mm(product_sum)} mm &nbsp; | &nbsp; 총 여폭 : {fmt_mm(actual_trim)} mm <span style="font-size:11px;font-weight:700">({fmt_mm(per_width_trim)} mm × {len(all_widths)})</span></span></div>
+    <div style="text-align:center;font-size:11px;font-weight:800;color:#53678e;margin:1px 0 2px;">기준 폭 {fmt_mm(deckle)} mm · 허용 최대 {fmt_mm(max_total_width)} mm · 현재 구성 {fmt_mm(total_required)} mm</div>''', unsafe_allow_html=True)
     # dimension line as SVG
     st.markdown(f'''<svg viewBox="0 0 1200 36" width="100%" height="24" role="img" aria-label="전체 지폭 치수"><path d="M35 20 H1165 M35 7 V30 M1165 7 V30 M35 20 l11 -7 M35 20 l11 7 M1165 20 l-11 -7 M1165 20 l-11 7" fill="none" stroke="#172b64" stroke-width="2.5" stroke-linecap="round"/></svg>''', unsafe_allow_html=True)
     # The custom component renders SVG plus editable number inputs embedded in each roll segment.
     roll_svg = build_roll_svg(segments, left_trim, right_trim)
-    roll_edit = roll_width_editor(svg=roll_svg, key="roll_width_editor_v24", default=None)
+    roll_edit = roll_width_editor(svg=roll_svg, key="roll_width_editor_v25", default=None)
     if isinstance(roll_edit, dict):
         _nonce = roll_edit.get("nonce")
         _handled = st.session_state.get("_handled_roll_edit_nonce")
@@ -914,25 +929,40 @@ else:
     {kv('지폭별 여폭',f'{fmt_mm(per_width_trim)} mm (좌 {fmt_mm(left_trim)} + 우 {fmt_mm(right_trim)})')}
     {kv('총 여폭',f'{fmt_mm(actual_trim)} mm ({fmt_mm(per_width_trim)} mm × {n})')}
     {kv('제품 폭 합계',fmt_mm(product_sum)+' mm')}
+    {kv('기준 폭',fmt_mm(deckle)+' mm')}
+    {kv('허용 최대 폭',fmt_mm(max_total_width)+' mm (+40 mm)')}
+    {kv('현재 구성 폭',fmt_mm(total_required)+' mm')}
     {kv('TEST 지폭',test_summary)}
     {kv('나머지 지폭',other_summary)}
     </div>'''
-    if abs(remainder) <= 1e-5:
-        width_status = "일치"
-    elif remainder > 0:
-        width_status = f"미일치 · 잔여 {fmt_mm(remainder)} mm"
+    overage = total_required - deckle
+    allowance_remaining = max_total_width - total_required
+    if abs(overage) <= 1e-5:
+        width_status = "기준 폭 일치"
+    elif overage < 0:
+        width_status = f"기준 폭 미사용 · 잔여 {fmt_mm(abs(overage))} mm"
+    elif total_required <= max_total_width + 1e-5:
+        width_status = f"허용 초과 +{fmt_mm(overage)} mm · 허용 한도 내"
     else:
-        width_status = f"미일치 · {fmt_mm(abs(remainder))} mm 초과"
+        width_status = f"허용 한도 초과 +{fmt_mm(overage)} mm"
+
     checks = [
         f"지폭별로 좌/우 {fmt_mm(left_trim)} mm의 여폭이 적용되었습니다.",
         f"총 여폭 : {fmt_mm(actual_trim)} mm ({fmt_mm(per_width_trim)} mm × {n})",
         f"제품 폭 합계 : {fmt_mm(product_sum)} mm",
-        f"전체 지폭 : {fmt_mm(total_required)} mm ({width_status})",
+        f"기준 폭 : {fmt_mm(deckle)} mm",
+        f"허용 최대 폭 : {fmt_mm(max_total_width)} mm (+{fmt_mm(OVERWIDTH_ALLOWANCE_MM)} mm)",
+        f"현재 구성 폭 : {fmt_mm(total_required)} mm ({width_status})",
     ]
-    if abs(remainder) <= 1e-5:
-        checks_html = '<div class="green-panel"><div class="green-title"><span style="font-size:21px">✓</span> 확인</div><div class="green-content">'+''.join(f'<div class="checkline"><span class="check">✓</span><span>{html.escape(c)}</span></div>' for c in checks)+'</div></div>'
+    if abs(overage) <= 1e-5:
+        checks_html = '<div class="green-panel"><div class="green-title"><span style="font-size:21px">✓</span> 기준 폭 일치</div><div class="green-content">'+''.join(f'<div class="checkline"><span class="check">✓</span><span>{html.escape(c)}</span></div>' for c in checks)+'</div></div>'
+    elif 0 < overage <= OVERWIDTH_ALLOWANCE_MM + 1e-5:
+        checks.append(f"허용 초과 잔여 한도 : {fmt_mm(max(0.0, allowance_remaining))} mm")
+        checks_html = '<div class="tolerance-panel"><div class="tolerance-title"><span style="font-size:21px">✓</span> 허용 초과 범위</div><div class="tolerance-content">'+''.join(f'<div class="checkline"><span class="check">✓</span><span>'+html.escape(c)+'</span></div>' for c in checks)+'</div></div>'
+    elif overage < 0:
+        checks_html = '<div class="warning-panel"><div class="warning-title"><span style="font-size:21px">!</span> 기준 폭 미달</div><div class="warning-content">'+''.join(f'<div class="checkline"><span style="color:#b7791f;font-size:18px;font-weight:900">•</span><span>{html.escape(c)}</span></div>' for c in checks)+'</div></div>'
     else:
-        checks_html = '<div class="warning-panel"><div class="warning-title"><span style="font-size:21px">!</span> 폭 합계 확인 필요</div><div class="warning-content">'+''.join(f'<div class="checkline"><span style="color:#b7791f;font-size:18px;font-weight:900">•</span><span>{html.escape(c)}</span></div>' for c in checks)+'</div></div>' 
+        checks_html = '<div class="warning-panel"><div class="warning-title"><span style="font-size:21px">!</span> 허용 폭 초과</div><div class="warning-content">'+''.join(f'<div class="checkline"><span style="color:#b7791f;font-size:18px;font-weight:900">•</span><span>{html.escape(c)}</span></div>' for c in checks)+'</div></div>'
 
     p1, p2, p3 = st.columns([1.8, 1.08, 1.0], gap="small")
     with p1:
@@ -953,5 +983,7 @@ else:
         )
 
 # Footer / input diagnostics
-if not calculation_error and abs((sum(all_widths) + n * per_width_trim) - deckle) > 1e-5:
-    st.warning("현재 구성 폭 합계가 전체 지폭과 일치하지 않습니다. 직접 입력한 지폭 합계를 확인하세요.")
+if not calculation_error and total_required > max_total_width + 1e-5:
+    st.error(f"현재 구성 폭 {total_required:,.2f} mm가 허용 최대 {max_total_width:,.2f} mm를 초과했습니다.")
+elif not calculation_error and total_required < deckle - 1e-5:
+    st.warning(f"현재 구성 폭이 기준 폭보다 {deckle - total_required:,.2f} mm 부족합니다. 기준 폭 {deckle:,.2f} mm / 허용 최대 {max_total_width:,.2f} mm")
