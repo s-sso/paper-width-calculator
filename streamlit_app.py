@@ -37,13 +37,15 @@ if isinstance(_pending_roll_edit, dict):
             elif _seg.get("kind") == "NORMAL":
                 _general_idx = int(_seg.get("general_idx", -1))
                 if 0 <= _general_idx < 20:
-                    st.session_state[f"manual_general_{_general_idx}"] = _w
+                    st.session_state[f"manual_general_fixed_{_general_idx}"] = True
+                    st.session_state[f"manual_general_value_{_general_idx}"] = _w
+                    st.session_state[f"manual_general_widget_{_general_idx}"] = _w
         if _pending_roll_edit.get("changed_kind") == "NORMAL":
             st.session_state["mode_choice"] = MANUAL_MODE
         st.session_state["_handled_roll_edit_nonce"] = _pending_nonce
 
 # -----------------------------------------------------------------------------
-# Theme / layout — compact header + isolated SVG renderer + TEST sequence control + standalone embedded in-roll width inputs + fixed expanded sidebar + reduced top whitespace (v8)
+# Theme / layout — compact header + isolated SVG renderer + TEST sequence control + standalone embedded in-roll width inputs + fixed expanded sidebar + reduced header and roll spacing; extended width arrows (v16 - manual widths auto-balance all untouched general slits)
 # -----------------------------------------------------------------------------
 CSS = r"""
 <style>
@@ -54,7 +56,7 @@ CSS = r"""
 }
 html, body, [class*="css"] { font-family:'Noto Sans KR','Malgun Gothic',sans-serif; }
 .stApp { background:linear-gradient(180deg,#f4f7ff 0%,#ffffff 42%,#f8faff 100%); color:var(--ink); }
-header[data-testid="stHeader"] { background:transparent; }
+header[data-testid="stHeader"] { display:none !important; height:0 !important; }
 #MainMenu, footer { visibility:hidden; }
 [data-testid="stToolbar"] { visibility:hidden; height:0; }
 /* Keep the input sidebar permanently expanded: remove Streamlit's collapse control. */
@@ -70,10 +72,10 @@ section[data-testid="stSidebar"] {
   border-right:1px solid #dce4f7;
   min-width:300px; max-width:300px;
 }
-section[data-testid="stSidebar"] > div { padding-top:.35rem !important; padding-bottom:.65rem !important; }
-section[data-testid="stMain"] > div { margin-top:-52px !important; padding-top:.35rem !important; padding-left:1.05rem; padding-right:1.05rem; padding-bottom:.7rem !important; max-width:none; }
+section[data-testid="stSidebar"] > div { padding-top:0 !important; padding-block-start:0 !important; padding-bottom:.65rem !important; }
+section[data-testid="stMain"] > div { margin-top:0 !important; padding-top:0 !important; padding-left:1.05rem; padding-right:1.05rem; padding-bottom:.7rem !important; max-width:none; }
 section[data-testid="stMain"] .block-container { padding-top:.35rem !important; padding-bottom:.7rem !important; }
-section[data-testid="stSidebar"] [data-testid="stSidebarContent"] { padding-top:.35rem !important; }
+section[data-testid="stSidebar"] [data-testid="stSidebarContent"] { padding-top:0 !important; padding-block-start:0 !important; }
 .global-header {
   position:fixed; z-index:999999; top:0; left:0; width:100vw; height:68px;
   background:linear-gradient(105deg,#1a2b55 0%,#2d416f 52%,#17264b 100%);
@@ -83,7 +85,8 @@ section[data-testid="stSidebar"] [data-testid="stSidebarContent"] { padding-top:
 .brand-icon { width:48px; height:48px; margin-right:13px; flex:0 0 auto; }
 .brand-title { font-size:23px; line-height:1.12; font-weight:900; letter-spacing:-1.2px; color:#fff; white-space:nowrap; }
 .brand-sub { font-size:11px; margin-top:3px; color:#e3eaff; font-weight:500; white-space:nowrap; }
-.sidebar-title { font-size:22px; font-weight:900; color:#15254d; margin:0 0 18px 0; letter-spacing:-.7px; }
+.sidebar-title { font-size:22px; font-weight:900; color:#15254d; margin:0 0 0 0; letter-spacing:-.7px; }
+.first-sidebar-section { margin-top:0 !important; }
 .sidebar-section { font-size:17px; font-weight:800; color:#18264a; margin:16px 0 8px; }
 .sidebar-note {font-size:12px;color:#697792; line-height:1.5; margin-top:2px;}
 div[data-testid="stNumberInput"] label, div[data-testid="stRadio"] label {font-weight:650!important;color:#27375f!important;}
@@ -105,6 +108,7 @@ div[data-testid="stRadio"] > label {font-size:15px!important;}
 .summary-card.violet {background:linear-gradient(145deg,#f6f5ff,#e9eaff); border-color:#d8d8ff;}
 .summary-card.blue {background:linear-gradient(145deg,#f0f6ff,#e3edff); border-color:#cedeff;}
 .summary-icon {width:36px;height:36px;flex:0 0 36px;color:#51639b;}
+.summary-icon-arrow {width:48px;height:38px;flex:0 0 48px;}
 .summary-label {font-size:13px;color:#29375b;font-weight:800;white-space:nowrap;margin-bottom:4px;}
 .summary-value {font-size:20px;line-height:1.15;font-weight:900;color:#111b3a;white-space:nowrap;letter-spacing:-.7px;}
 .summary-value small {font-size:14px;font-weight:800;letter-spacing:0;}
@@ -124,6 +128,8 @@ div[data-testid="stRadio"] > label {font-size:15px!important;}
 .kv .k{font-weight:750;color:#293650;}
 .kv .v{font-weight:850;color:#111a32;text-align:right;}
 .roll-wrap {margin-top:2px;margin-bottom:3px;}
+/* Tighten the whitespace between the dimension arrow and the roll graphic. */
+div[data-testid="stCustomComponentV1"] { margin-top:-34px !important; margin-bottom:-8px !important; }
 .roll-editor-head {font-size:13px;font-weight:900;color:#23365f;margin:3px 0 5px;display:flex;align-items:center;gap:7px;}
 .roll-editor-head span {color:#2865f5;font-size:17px;}
 .roll-editor-label {font-size:10px;font-weight:850;color:#34476f;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin:0 0 2px;}
@@ -147,32 +153,98 @@ div[data-testid="stNumberInput"].roll-width-input input {text-align:center!impor
 hr {border-color:#e7ecf5!important;}
 @media(max-width:1100px){
  .summary-card{gap:6px;padding:10px 7px;}.summary-icon{width:30px;height:30px;flex-basis:30px;}.summary-value{font-size:18px;}
+ .summary-card .summary-icon-arrow{width:44px;height:34px;flex-basis:44px;}
 }
 @media(max-width:800px){
  .global-header{height:62px;padding:0 14px}.brand-title{font-size:21px}.brand-sub{font-size:10px}.brand-icon{width:42px;height:42px}
- section[data-testid="stMain"] > div{margin-top:-44px!important;padding-top:.35rem!important;padding-left:.55rem;padding-right:.55rem}
+ section[data-testid="stMain"] > div{margin-top:0!important;padding-top:0!important;padding-block-start:0!important;padding-left:.55rem;padding-right:.55rem}
  section[data-testid="stMain"] .block-container{padding-top:.35rem!important}
- section[data-testid="stSidebar"] > div{padding-top:.35rem!important}
- section[data-testid="stSidebar"] [data-testid="stSidebarContent"]{padding-top:.35rem!important}
+ section[data-testid="stSidebar"] > div{padding-top:0!important;padding-block-start:0!important}
+ section[data-testid="stSidebar"] [data-testid="stSidebarContent"]{padding-top:0!important;padding-block-start:0!important}
 }
+
+/* v14: real layout fix — fixed header is CSS-only and occupies zero Streamlit flow height. */
+header[data-testid="stHeader"] {
+  display:none !important;
+  height:0 !important;
+  min-height:0 !important;
+  visibility:hidden !important;
+}
+body::before {
+  content:"";
+  position:fixed;
+  z-index:2147483000;
+  top:0; left:0; right:0;
+  height:68px;
+  background:linear-gradient(105deg,#1a2b55 0%,#2d416f 52%,#17264b 100%);
+  box-shadow:0 4px 18px rgba(18,35,76,.18);
+  pointer-events:none;
+}
+body::after {
+  content:"";
+  position:fixed;
+  z-index:2147483001;
+  top:0; left:0;
+  width:350px; height:68px;
+  background-image:url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIzNTAiIGhlaWdodD0iNjgiIHZpZXdCb3g9IjAgMCAzNTAgNjgiPgo8ZGVmcz4KPGxpbmVhckdyYWRpZW50IGlkPSJwIiB4MT0iMCIgeTE9IjAiIHgyPSIxIiB5Mj0iMSI+PHN0b3Agc3RvcC1jb2xvcj0iI2ZmZiIvPjxzdG9wIG9mZnNldD0iLjU1IiBzdG9wLWNvbG9yPSIjZThlZGZhIi8+PHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjYWViYmQ3Ii8+PC9saW5lYXJHcmFkaWVudD4KPGxpbmVhckdyYWRpZW50IGlkPSJjIiB4MT0iMCIgeTE9IjAiIHgyPSIxIiB5Mj0iMCI+PHN0b3Agc3RvcC1jb2xvcj0iI2QzZDllOCIvPjxzdG9wIG9mZnNldD0iLjUiIHN0b3AtY29sb3I9IiNmZmYiLz48c3RvcCBvZmZzZXQ9IjEiIHN0b3AtY29sb3I9IiM4Nzk1YjUiLz48L2xpbmVhckdyYWRpZW50Pgo8L2RlZnM+CjxnIHRyYW5zZm9ybT0idHJhbnNsYXRlKDEwLDEpIHNjYWxlKC42MikiPgo8cGF0aCBkPSJNMTQgMzQgNjEgMTJRNzAgOCA3NyAxNGw5IDdROTEgMjUgODggMzRMNjcgNzNRNjMgODEgNTQgODRMMTcgNjlROCA2NSA5IDU1TDEwIDQzUTEwIDM3IDE0IDM0WiIgZmlsbD0idXJsKCNwKSIgc3Ryb2tlPSIjZjhmYmZmIiBzdHJva2Utd2lkdGg9IjIiLz4KPHBhdGggZD0iTTE5IDM3IDYxIDIwUTY4IDE3IDc1IDIyTDgyIDI3IDYwIDY1UTU2IDcyIDQ5IDczTDE4IDYxUTEzIDU5IDE0IDUyTDE0IDQ0UTE0IDQwIDE5IDM3WiIgZmlsbD0iI2Y4ZmJmZiIgb3BhY2l0eT0iLjkzIi8+CjxlbGxpcHNlIGN4PSIyNSIgY3k9IjUxIiByeD0iMTYiIHJ5PSIyMyIgdHJhbnNmb3JtPSJyb3RhdGUoLTE4IDI1IDUxKSIgZmlsbD0idXJsKCNjKSIgc3Ryb2tlPSIjZmZmIiBzdHJva2Utd2lkdGg9IjMiLz4KPGVsbGlwc2UgY3g9IjI1IiBjeT0iNTEiIHJ4PSI4IiByeT0iMTMiIHRyYW5zZm9ybT0icm90YXRlKC0xOCAyNSA1MSkiIGZpbGw9IiM3Nzg2YTciIHN0cm9rZT0iI2ZmZiIgc3Ryb2tlLXdpZHRoPSIzIi8+CjxwYXRoIGQ9Ik0yOCAzMSA2NiAxNk0zNyA3MSA2MSA3OCIgc3Ryb2tlPSIjZmZmIiBzdHJva2Utd2lkdGg9IjMiIG9wYWNpdHk9Ii45IiBmaWxsPSJub25lIi8+CjwvZz4KPHRleHQgeD0iODAiIHk9IjI4IiBmb250LWZhbWlseT0iQXJpYWwsIHNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iMjMiIGZvbnQtd2VpZ2h0PSI5MDAiIGZpbGw9IiNmZmYiPuyngO2PrSDqtazshLEg6rOE7IKw6riwPC90ZXh0Pgo8dGV4dCB4PSI4MCIgeT0iNDgiIGZvbnQtZmFtaWx5PSJBcmlhbCwgc2Fucy1zZXJpZiIgZm9udC1zaXplPSIxMSIgZm9udC13ZWlnaHQ9IjYwMCIgZmlsbD0iI2UzZWFmZiI+7KCc7KeA7ZqM7IKsIOyngO2PrSDqtazshLEg7Iuc666s66CI7J207IWYPC90ZXh0Pgo8L3N2Zz4=");
+  background-repeat:no-repeat;
+  background-position:left top;
+  background-size:350px 68px;
+  pointer-events:none;
+}
+div[data-testid="stAppViewContainer"],
+.stAppViewContainer {
+  padding-top:0 !important;
+  padding-block-start:0 !important;
+  margin-top:0 !important;
+}
+/* v15: reduce the excessive main top gap (74px -> 40px); header stays 68px. */
+section[data-testid="stMain"] {
+  margin-top:0 !important;
+  padding-top:0 !important;
+}
+section[data-testid="stMain"] [data-testid="stMainBlockContainer"],
+section[data-testid="stMain"] .block-container {
+  box-sizing:border-box !important;
+  padding-top:40px !important;
+  padding-block-start:40px !important;
+  margin-top:0 !important;
+}
+section[data-testid="stMain"] [data-testid="stHorizontalBlock"]:has(.summary-card) {
+  margin-top:0 !important;
+}
+/* v15: sidebar top padding reduced from 78px to 8px; menu begins right under header. */
+section[data-testid="stSidebar"] [data-testid="stSidebarContent"],
+section[data-testid="stSidebar"] .block-container,
+section[data-testid="stSidebar"] [data-testid="stMainBlockContainer"] {
+  padding-top:8px !important;
+  padding-block-start:8px !important;
+  margin-top:0 !important;
+}
+section[data-testid="stSidebar"] .sidebar-title { margin-bottom:0 !important; }
+section[data-testid="stSidebar"] .first-sidebar-section { margin-top:0 !important; }
+@media(max-width:800px) {
+  body::before { height:62px; }
+  body::after { height:62px; background-size:320px 62px; }
+  section[data-testid="stMain"] [data-testid="stMainBlockContainer"],
+  section[data-testid="stMain"] .block-container {
+    padding-top:34px !important;
+    padding-block-start:34px !important;
+  }
+  section[data-testid="stSidebar"] [data-testid="stSidebarContent"],
+  section[data-testid="stSidebar"] .block-container {
+    padding-top:8px !important;
+    padding-block-start:8px !important;
+  }
+}
+
 </style>
 """
 st.markdown(CSS, unsafe_allow_html=True)
 
-HEADER = r"""
-<div class="global-header">
- <svg class="brand-icon" viewBox="0 0 100 100" aria-hidden="true">
-  <defs><linearGradient id="paper" x1="0" x2="1" y1="0" y2="1"><stop stop-color="#fff"/><stop offset=".55" stop-color="#e8edfa"/><stop offset="1" stop-color="#aebbd7"/></linearGradient><linearGradient id="core" x1="0" x2="1"><stop stop-color="#d3d9e8"/><stop offset=".5" stop-color="#fff"/><stop offset="1" stop-color="#8795b5"/></linearGradient></defs>
-  <path d="M14 34 61 12Q70 8 77 14l9 7Q91 25 88 34L67 73Q63 81 54 84L17 69Q8 65 9 55L10 43Q10 37 14 34Z" fill="url(#paper)" stroke="#f8fbff" stroke-width="2"/>
-  <path d="M19 37 61 20Q68 17 75 22L82 27 60 65Q56 72 49 73L18 61Q13 59 14 52L14 44Q14 40 19 37Z" fill="#f8fbff" opacity=".93"/>
-  <ellipse cx="25" cy="51" rx="16" ry="23" transform="rotate(-18 25 51)" fill="url(#core)" stroke="#fff" stroke-width="3"/>
-  <ellipse cx="25" cy="51" rx="8" ry="13" transform="rotate(-18 25 51)" fill="#7786a7" stroke="#fff" stroke-width="3"/>
-  <path d="M28 31 66 16M37 71 61 78" stroke="#fff" stroke-width="3" opacity=".9" fill="none"/>
- </svg>
- <div><div class="brand-title">지폭 구성 계산기</div><div class="brand-sub">제지회사 지폭 구성 시뮬레이션</div></div>
-</div>
-"""
-st.markdown(HEADER, unsafe_allow_html=True)
+# The visual header is rendered by fixed body pseudo-elements in CSS.
+# It is intentionally not a Streamlit markdown element, so it reserves zero layout height.
+
 
 # Embedded component frontend: generated automatically in /tmp at runtime.
 # This keeps deployment to a single Python file; no separate roll_component folder is required.
@@ -201,13 +273,13 @@ ROLL_COMPONENT_HTML = r"""<!doctype html>
   function post(type, extra) {
     window.parent.postMessage(Object.assign({isStreamlitMessage:true, type:type}, extra || {}), '*');
   }
-  function currentSegments() {
-    return Array.from(root.querySelectorAll('input.roll-width-input')).map((el) => ({
+  function segmentForInput(el) {
+    return {
       kind: el.dataset.kind,
       test_no: el.dataset.kind === 'TEST' ? Number(el.dataset.index) : null,
       general_idx: el.dataset.kind === 'NORMAL' ? Number(el.dataset.index) : null,
       width: Number(el.value)
-    }));
+    };
   }
   function render(args) {
     const svg = args && args.svg ? String(args.svg) : '';
@@ -230,7 +302,7 @@ ROLL_COMPONENT_HTML = r"""<!doctype html>
           nonce: String(Date.now()) + '-' + String(editCounter),
           changed_kind: input.dataset.kind,
           changed_index: Number(input.dataset.index),
-          segments: currentSegments()
+          segments: [segmentForInput(input)]
         };
         post('streamlit:setComponentValue', {value: payload});
       });
@@ -374,17 +446,29 @@ def _sync_test_roll_to_sidebar(test_no: int) -> None:
     st.session_state[f"test_width_{test_no}"] = float(st.session_state[key])
 
 def _sync_manual_sidebar_to_roll(index: int) -> None:
-    st.session_state[f"roll_general_width_{index}"] = float(st.session_state[f"manual_general_{index}"])
+    widget_key = f"manual_general_widget_{index}"
+    value = st.session_state.get(widget_key)
+    if value is None:
+        st.session_state[f"manual_general_fixed_{index}"] = False
+        st.session_state.pop(f"manual_general_value_{index}", None)
+        st.session_state.pop(f"roll_general_width_{index}", None)
+    else:
+        numeric_value = float(value)
+        st.session_state[f"manual_general_fixed_{index}"] = True
+        st.session_state[f"manual_general_value_{index}"] = numeric_value
+        st.session_state[f"roll_general_width_{index}"] = numeric_value
 
 def _sync_roll_general_to_manual(index: int) -> None:
     value = float(st.session_state[f"roll_general_width_{index}"])
-    st.session_state[f"manual_general_{index}"] = value
-    # Editing a normal slit on the roll switches the calculation to custom widths.
+    st.session_state[f"manual_general_fixed_{index}"] = True
+    st.session_state[f"manual_general_value_{index}"] = value
+    st.session_state[f"manual_general_widget_{index}"] = value
+    # Editing a normal slit on the roll switches to custom widths; only this slit is fixed.
     st.session_state["mode_choice"] = MANUAL_MODE
 
 with st.sidebar:
     st.markdown('<div class="sidebar-title">⚙️ 입력 조건</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sidebar-section">전체 지폭 (고정)</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sidebar-section first-sidebar-section">전체 지폭 (고정)</div>', unsafe_allow_html=True)
     deckle = st.number_input("전체 지폭 (mm)", min_value=100.0, max_value=20000.0, value=4850.0, step=10.0, key="deckle", label_visibility="collapsed")
 
     st.markdown('<div class="sidebar-section">구성할 지폭 개수 (n)</div>', unsafe_allow_html=True)
@@ -455,20 +539,58 @@ with st.sidebar:
     test_total = sum(test_widths)
 
     if general_count > 0 and mode.startswith("폭 직접 입력"):
-        st.markdown('<div class="sidebar-note">일반 지폭 제품 폭을 왼쪽부터 순서대로 입력하세요.</div>', unsafe_allow_html=True)
-        remaining_for_general = max(0.0, deckle - n * (left_trim + right_trim) - test_total)
-        each_default = remaining_for_general / general_count
+        st.markdown(
+            '<div class="sidebar-note">값을 수정한 지폭은 고정되고, 나머지 지폭은 남은 폭을 자동 균등 분배합니다.</div>',
+            unsafe_allow_html=True,
+        )
+
+        # Only fields explicitly edited by the user are fixed. All other fields
+        # are recalculated from the remaining usable width on every rerun.
+        manual_target = deckle - n * (left_trim + right_trim) - test_total
+        fixed_flags = []
+        fixed_total = 0.0
         for i in range(general_count):
-            manual_key = f"manual_general_{i}"
-            st.session_state.setdefault(manual_key, float(each_default))
+            fixed_key = f"manual_general_fixed_{i}"
+            value_key = f"manual_general_value_{i}"
+            is_fixed = bool(st.session_state.get(fixed_key, False))
+            saved_value = st.session_state.get(value_key)
+            if is_fixed and saved_value is not None:
+                fixed_total += float(saved_value)
+                fixed_flags.append(True)
+            else:
+                st.session_state[fixed_key] = False
+                fixed_flags.append(False)
+
+        auto_count = fixed_flags.count(False)
+        remaining_for_auto = manual_target - fixed_total
+        auto_each = (
+            max(0.0, remaining_for_auto) / auto_count
+            if auto_count > 0 else None
+        )
+
+        for i in range(general_count):
+            manual_key = f"manual_general_widget_{i}"
+            value_key = f"manual_general_value_{i}"
+            is_fixed = fixed_flags[i]
+
+            if is_fixed:
+                # Restore the committed user value if Streamlit cleaned up a hidden widget.
+                st.session_state[manual_key] = float(st.session_state[value_key])
+                status_label = "직접 입력"
+            else:
+                # Auto fields always refresh to the same evenly distributed remainder.
+                st.session_state[manual_key] = float(auto_each or 0.0)
+                status_label = "자동 균등"
+
             value = st.number_input(
-                f"일반 지폭 {i+1} 제품 폭 (mm)",
+                f"일반 지폭 {i+1} 제품 폭 (mm) · {status_label}",
                 min_value=0.0, max_value=20000.0,
-                step=0.5, key=manual_key,
+                step=0.5, format="%.2f",
+                key=manual_key,
                 on_change=_sync_manual_sidebar_to_roll,
                 args=(i,),
             )
-            manual_values.append(float(value))
+            manual_values.append(float(value) if value is not None else 0.0)
     elif general_count > 0 and mode.startswith("폭 조합 검색"):
         st.markdown('<div class="sidebar-note">일반 지폭에 적용할 폭 검색 범위를 설정하세요.</div>', unsafe_allow_html=True)
         search_min = st.number_input("최소 폭 (mm)", min_value=1.0, max_value=20000.0, value=500.0, step=10.0, key="search_min")
@@ -624,7 +746,7 @@ for col, (ico, label, value, unit, sub, tone) in zip(card_cols, cards):
     icon_svg = {
         "◉": '<svg class="summary-icon" viewBox="0 0 48 48"><ellipse cx="17" cy="24" rx="8" ry="15" fill="none" stroke="currentColor" stroke-width="3"/><path d="M17 9 37 5Q43 5 44 12L44 34Q43 40 37 41L17 39" fill="none" stroke="currentColor" stroke-width="3"/><ellipse cx="17" cy="24" rx="3" ry="7" fill="none" stroke="currentColor" stroke-width="2"/></svg>',
         "▱": '<svg class="summary-icon" viewBox="0 0 48 48"><path d="m24 5 19 10-19 10L5 15 24 5Z M5 24l19 10 19-10 M5 33l19 10 19-10" fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="round"/></svg>',
-        "↔": '<svg class="summary-icon" viewBox="0 0 48 48"><path d="M7 24h34M7 24l9-9M7 24l9 9M41 24l-9-9M41 24l-9 9" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+        "↔": '<svg class="summary-icon summary-icon-arrow" viewBox="0 0 60 48"><path d="M2 24H58 M2 24l12-12 M2 24l12 12 M58 24L46 12 M58 24L46 36" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>',
         "☑": '<svg class="summary-icon" viewBox="0 0 48 48"><rect x="7" y="7" width="34" height="34" rx="6" fill="none" stroke="#2463ff" stroke-width="3"/><path d="m15 24 7 7 13-15" fill="none" stroke="#2463ff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/></svg>',
     }[ico]
     with col:
@@ -649,7 +771,7 @@ else:
     st.markdown(f'''<div style="text-align:center;margin:0 0 1px;"><span class="total-pill">전체 지폭 : {fmt_mm(deckle)} mm</span></div>
     <div style="text-align:center;margin:0 0 -2px;"><span class="info-pill">제품 폭 합계 : {fmt_mm(product_sum)} mm &nbsp; | &nbsp; 총 여폭 : {fmt_mm(actual_trim)} mm <span style="font-size:11px;font-weight:700">({fmt_mm(per_width_trim)} mm × {len(all_widths)})</span></span></div>''', unsafe_allow_html=True)
     # dimension line as SVG
-    st.markdown(f'''<svg viewBox="0 0 1200 36" width="100%" height="24" role="img" aria-label="전체 지폭 치수"><path d="M70 20 H1130 M70 8 V29 M1130 8 V29 M70 20 l10 -6 M70 20 l10 6 M1130 20 l-10 -6 M1130 20 l-10 6" fill="none" stroke="#172b64" stroke-width="2.2" stroke-linecap="round"/></svg>''', unsafe_allow_html=True)
+    st.markdown(f'''<svg viewBox="0 0 1200 36" width="100%" height="24" role="img" aria-label="전체 지폭 치수"><path d="M35 20 H1165 M35 7 V30 M1165 7 V30 M35 20 l11 -7 M35 20 l11 7 M1165 20 l-11 -7 M1165 20 l-11 7" fill="none" stroke="#172b64" stroke-width="2.5" stroke-linecap="round"/></svg>''', unsafe_allow_html=True)
     # The custom component renders SVG plus editable number inputs embedded in each roll segment.
     roll_svg = build_roll_svg(segments, left_trim, right_trim)
     roll_edit = roll_width_editor(svg=roll_svg, key="roll_width_editor", default=None)
