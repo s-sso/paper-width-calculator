@@ -24,15 +24,18 @@ MANUAL_MODE = "폭 직접 입력\n(사용자 지정)"
 # Migrate sessions created by v17, which stored a literal "\\n" in the radio value.
 if st.session_state.get("mode_choice") == r"폭 직접 입력\n(사용자 지정)":
     st.session_state["mode_choice"] = MANUAL_MODE
-MANUAL_OVERRIDES_KEY = "_manual_width_overrides_v22"
-MANUAL_OVERRIDES_INIT_KEY = "_manual_width_overrides_v22_initialized"
-# v22 performs a one-time reset. v21 could retain every displayed default width
-# as a fixed override, making the unedited slits appear fixed forever.
+MANUAL_OVERRIDES_KEY = "_manual_width_overrides_v23"
+MANUAL_WIDGET_SNAPSHOT_KEY = "_manual_width_widget_snapshot_v23"
+MANUAL_OVERRIDES_INIT_KEY = "_manual_width_overrides_v23_initialized"
+# v23 starts clean and detects sidebar edits by comparing widget state with the
+# last values rendered. Computed values are never committed as user overrides.
 if not st.session_state.get(MANUAL_OVERRIDES_INIT_KEY, False):
     st.session_state[MANUAL_OVERRIDES_KEY] = {}
+    st.session_state[MANUAL_WIDGET_SNAPSHOT_KEY] = {}
     st.session_state[MANUAL_OVERRIDES_INIT_KEY] = True
-elif MANUAL_OVERRIDES_KEY not in st.session_state:
-    st.session_state[MANUAL_OVERRIDES_KEY] = {}
+else:
+    st.session_state.setdefault(MANUAL_OVERRIDES_KEY, {})
+    st.session_state.setdefault(MANUAL_WIDGET_SNAPSHOT_KEY, {})
 
 def _calculate_manual_distribution(target: float, count: int, overrides: dict):
     """Return evenly balanced widths, keeping only explicit overrides fixed."""
@@ -81,7 +84,7 @@ def _calculate_manual_distribution(target: float, count: int, overrides: dict):
 
 
 def _store_manual_sidebar_override(index: int) -> None:
-    key = f"manual_general_v22_widget_{index}"
+    key = f"manual_general_v23_widget_{index}"
     try:
         value = float(st.session_state[key])
     except (KeyError, TypeError, ValueError):
@@ -428,10 +431,10 @@ ROLL_COMPONENT_HTML = r"""<!doctype html>
 </script>
 </body>
 </html>"""
-_COMPONENT_DIR = Path(tempfile.gettempdir()) / "paper_width_calculator_roll_component_v22"
+_COMPONENT_DIR = Path(tempfile.gettempdir()) / "paper_width_calculator_roll_component_v23"
 _COMPONENT_DIR.mkdir(parents=True, exist_ok=True)
 (_COMPONENT_DIR / "index.html").write_text(ROLL_COMPONENT_HTML, encoding="utf-8")
-roll_width_editor = components.declare_component("roll_width_editor_v22", path=str(_COMPONENT_DIR))
+roll_width_editor = components.declare_component("roll_width_editor_v23", path=str(_COMPONENT_DIR))
 
 # -----------------------------------------------------------------------------
 # SVG roll illustration
@@ -635,7 +638,26 @@ with st.sidebar:
             unsafe_allow_html=True,
         )
 
+        # Detect only genuine sidebar edits. Programmatically refreshed auto values
+        # must never become fixed overrides (the old on_change approach did that).
         overrides = dict(st.session_state.get(MANUAL_OVERRIDES_KEY, {}))
+        previous_snapshot = dict(st.session_state.get(MANUAL_WIDGET_SNAPSHOT_KEY, {}))
+        for i in range(general_count):
+            widget_key = f"manual_general_v23_widget_{i}"
+            previous_value = previous_snapshot.get(str(i))
+            current_value = st.session_state.get(widget_key)
+            if previous_value is not None and current_value is not None:
+                try:
+                    current_number = float(current_value)
+                    previous_number = float(previous_value)
+                    if math.isfinite(current_number) and abs(current_number - previous_number) > 1e-7:
+                        # Only a value that differs from the last value shown to the user
+                        # is treated as an explicit manual edit.
+                        overrides[i] = current_number
+                except (TypeError, ValueError):
+                    pass
+
+        st.session_state[MANUAL_OVERRIDES_KEY] = overrides
         manual_values, fixed_indices, auto_indices, distribution_error = _calculate_manual_distribution(
             target=deckle - n * (left_trim + right_trim) - test_total,
             count=general_count,
@@ -645,26 +667,28 @@ with st.sidebar:
         if distribution_error:
             st.warning(distribution_error)
 
+        new_snapshot = {}
         for i in range(general_count):
-            widget_key = f"manual_general_v22_widget_{i}"
+            widget_key = f"manual_general_v23_widget_{i}"
             is_fixed = i in fixed_indices
             status_label = "직접 입력" if is_fixed else "자동 균등"
+            shown_value = float(manual_values[i])
 
-            # Always seed the widget from the one authoritative calculation.
-            # A fresh v17 key also avoids stale widget values saved by the v16 implementation.
-            st.session_state[widget_key] = float(manual_values[i])
-            value = st.number_input(
+            # Set the recalculated value before the widget is instantiated.
+            st.session_state[widget_key] = shown_value
+            st.number_input(
                 f"일반 지폭 {i+1} 제품 폭 (mm) · {status_label}",
                 min_value=0.0,
                 max_value=20000.0,
                 step=0.01,
                 format="%.2f",
                 key=widget_key,
-                on_change=_sync_manual_sidebar_to_roll,
-                args=(i,),
             )
+            new_snapshot[str(i)] = shown_value
 
-        # Core calculation uses the derived values, not stale number_input session values.
+        # Save what was actually rendered; next run can distinguish a user edit
+        # from an automatic recalculation.
+        st.session_state[MANUAL_WIDGET_SNAPSHOT_KEY] = new_snapshot
         manual_values = [float(v) for v in manual_values]
     elif general_count > 0 and mode.startswith("폭 조합 검색"):
         st.markdown('<div class="sidebar-note">일반 지폭에 적용할 폭 검색 범위를 설정하세요.</div>', unsafe_allow_html=True)
@@ -850,7 +874,7 @@ else:
     st.markdown(f'''<svg viewBox="0 0 1200 36" width="100%" height="24" role="img" aria-label="전체 지폭 치수"><path d="M35 20 H1165 M35 7 V30 M1165 7 V30 M35 20 l11 -7 M35 20 l11 7 M1165 20 l-11 -7 M1165 20 l-11 7" fill="none" stroke="#172b64" stroke-width="2.5" stroke-linecap="round"/></svg>''', unsafe_allow_html=True)
     # The custom component renders SVG plus editable number inputs embedded in each roll segment.
     roll_svg = build_roll_svg(segments, left_trim, right_trim)
-    roll_edit = roll_width_editor(svg=roll_svg, key="roll_width_editor_v22", default=None)
+    roll_edit = roll_width_editor(svg=roll_svg, key="roll_width_editor_v23", default=None)
     if isinstance(roll_edit, dict):
         _nonce = roll_edit.get("nonce")
         _handled = st.session_state.get("_handled_roll_edit_nonce")
