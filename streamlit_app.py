@@ -24,10 +24,14 @@ MANUAL_MODE = "폭 직접 입력\n(사용자 지정)"
 # Migrate sessions created by v17, which stored a literal "\\n" in the radio value.
 if st.session_state.get("mode_choice") == r"폭 직접 입력\n(사용자 지정)":
     st.session_state["mode_choice"] = MANUAL_MODE
-MANUAL_OVERRIDES_KEY = "_manual_width_overrides_v21"
-if MANUAL_OVERRIDES_KEY not in st.session_state:
-    # Start v20 with a clean override map. Prior releases could leave every old
-    # equal-split width marked as fixed, which prevents the remaining widths from rebalancing.
+MANUAL_OVERRIDES_KEY = "_manual_width_overrides_v22"
+MANUAL_OVERRIDES_INIT_KEY = "_manual_width_overrides_v22_initialized"
+# v22 performs a one-time reset. v21 could retain every displayed default width
+# as a fixed override, making the unedited slits appear fixed forever.
+if not st.session_state.get(MANUAL_OVERRIDES_INIT_KEY, False):
+    st.session_state[MANUAL_OVERRIDES_KEY] = {}
+    st.session_state[MANUAL_OVERRIDES_INIT_KEY] = True
+elif MANUAL_OVERRIDES_KEY not in st.session_state:
     st.session_state[MANUAL_OVERRIDES_KEY] = {}
 
 def _calculate_manual_distribution(target: float, count: int, overrides: dict):
@@ -77,7 +81,7 @@ def _calculate_manual_distribution(target: float, count: int, overrides: dict):
 
 
 def _store_manual_sidebar_override(index: int) -> None:
-    key = f"manual_general_v21_widget_{index}"
+    key = f"manual_general_v22_widget_{index}"
     try:
         value = float(st.session_state[key])
     except (KeyError, TypeError, ValueError):
@@ -424,10 +428,10 @@ ROLL_COMPONENT_HTML = r"""<!doctype html>
 </script>
 </body>
 </html>"""
-_COMPONENT_DIR = Path(tempfile.gettempdir()) / "paper_width_calculator_roll_component_v21"
+_COMPONENT_DIR = Path(tempfile.gettempdir()) / "paper_width_calculator_roll_component_v22"
 _COMPONENT_DIR.mkdir(parents=True, exist_ok=True)
 (_COMPONENT_DIR / "index.html").write_text(ROLL_COMPONENT_HTML, encoding="utf-8")
-roll_width_editor = components.declare_component("roll_width_editor_v21", path=str(_COMPONENT_DIR))
+roll_width_editor = components.declare_component("roll_width_editor_v22", path=str(_COMPONENT_DIR))
 
 # -----------------------------------------------------------------------------
 # SVG roll illustration
@@ -642,7 +646,7 @@ with st.sidebar:
             st.warning(distribution_error)
 
         for i in range(general_count):
-            widget_key = f"manual_general_v21_widget_{i}"
+            widget_key = f"manual_general_v22_widget_{i}"
             is_fixed = i in fixed_indices
             status_label = "직접 입력" if is_fixed else "자동 균등"
 
@@ -846,7 +850,7 @@ else:
     st.markdown(f'''<svg viewBox="0 0 1200 36" width="100%" height="24" role="img" aria-label="전체 지폭 치수"><path d="M35 20 H1165 M35 7 V30 M1165 7 V30 M35 20 l11 -7 M35 20 l11 7 M1165 20 l-11 -7 M1165 20 l-11 7" fill="none" stroke="#172b64" stroke-width="2.5" stroke-linecap="round"/></svg>''', unsafe_allow_html=True)
     # The custom component renders SVG plus editable number inputs embedded in each roll segment.
     roll_svg = build_roll_svg(segments, left_trim, right_trim)
-    roll_edit = roll_width_editor(svg=roll_svg, key="roll_width_editor_v21", default=None)
+    roll_edit = roll_width_editor(svg=roll_svg, key="roll_width_editor_v22", default=None)
     if isinstance(roll_edit, dict):
         _nonce = roll_edit.get("nonce")
         _handled = st.session_state.get("_handled_roll_edit_nonce")
