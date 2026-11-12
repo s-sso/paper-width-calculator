@@ -1,1 +1,1 @@
-Replace the GitHub streamlit_app.py with this file renamed to streamlit_app.py. Keep existing requirements.txt and packages.txt unchanged. In 폭 직접 입력 mode, edited general slits stay fixed and untouched slits evenly share the remaining width.
+Replace the existing GitHub streamlit_app.py with this file. Keep requirements.txt and packages.txt unchanged. Only explicit normal-slit edits are retained; all untouched normal slits are rebalanced automatically.

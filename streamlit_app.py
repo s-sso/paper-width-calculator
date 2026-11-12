@@ -18,34 +18,103 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# Values sent back from the in-roll HTML component are applied before sidebar widgets
-# are created. This avoids modifying a Streamlit widget state after instantiation.
+# In-roll edits and sidebar edits share one source of truth:
+# only explicitly changed normal widths are stored; every untouched width is recalculated.
 MANUAL_MODE = "폭 직접 입력\n(사용자 지정)"
+MANUAL_OVERRIDES_KEY = "_manual_width_overrides_v17"
+
+def _calculate_manual_distribution(target: float, count: int, overrides: dict):
+    """Return evenly balanced widths, keeping only explicit overrides fixed."""
+    count = max(0, int(count))
+    fixed = {}
+    for key, value in (overrides or {}).items():
+        try:
+            idx = int(key)
+            number = float(value)
+        except (TypeError, ValueError):
+            continue
+        if 0 <= idx < count and math.isfinite(number) and number >= 0:
+            fixed[idx] = number
+
+    widths = [0.0] * count
+    for idx, value in fixed.items():
+        widths[idx] = value
+
+    auto_indices = [i for i in range(count) if i not in fixed]
+    fixed_total = sum(fixed.values())
+    remaining = float(target) - fixed_total
+
+    if remaining < -1e-7:
+        return widths, set(fixed), set(auto_indices), (
+            f"직접 입력한 일반 지폭 합계가 목표 폭을 초과했습니다. "
+            f"직접 입력 합계 {fixed_total:,.2f} mm / 목표 {target:,.2f} mm"
+        )
+
+    if auto_indices:
+        # Display at 0.01 mm precision and put the rounding residue in the final
+        # automatic slit, so the displayed widths still sum exactly to the target.
+        if remaining < 0:
+            remaining = 0.0
+        each = round(remaining / len(auto_indices), 2)
+        for idx in auto_indices[:-1]:
+            widths[idx] = each
+        widths[auto_indices[-1]] = remaining - each * (len(auto_indices) - 1)
+        return widths, set(fixed), set(auto_indices), None
+
+    if abs(remaining) > 1e-6:
+        return widths, set(fixed), set(), (
+            f"직접 입력한 일반 지폭 합계가 목표와 다릅니다. "
+            f"일반 지폭 합계는 {target:,.2f} mm여야 합니다. 현재 {fixed_total:,.2f} mm입니다."
+        )
+    return widths, set(fixed), set(), None
+
+
+def _store_manual_sidebar_override(index: int) -> None:
+    key = f"manual_general_v17_widget_{index}"
+    try:
+        value = float(st.session_state[key])
+    except (KeyError, TypeError, ValueError):
+        return
+    overrides = dict(st.session_state.get(MANUAL_OVERRIDES_KEY, {}))
+    overrides[int(index)] = value
+    st.session_state[MANUAL_OVERRIDES_KEY] = overrides
+
+
+def _apply_pending_roll_edit(state, payload, manual_mode: str) -> None:
+    """Apply a single roll edit before Streamlit widgets are instantiated."""
+    if not isinstance(payload, dict):
+        return
+    nonce = payload.get("nonce")
+    if not nonce or nonce == state.get("_handled_roll_edit_nonce"):
+        return
+
+    overrides = dict(state.get(MANUAL_OVERRIDES_KEY, {}))
+    for seg in payload.get("segments", []):
+        try:
+            width = max(0.0, min(20000.0, float(seg.get("width", 0))))
+        except (TypeError, ValueError):
+            continue
+        if seg.get("kind") == "TEST":
+            test_no = int(seg.get("test_no", 0))
+            if 1 <= test_no <= 5:
+                state[f"test_width_{test_no}"] = width
+        elif seg.get("kind") == "NORMAL":
+            general_idx = int(seg.get("general_idx", -1))
+            if 0 <= general_idx < 20:
+                # Keep previous explicit edits, add/update the slit just edited on the roll.
+                overrides[general_idx] = width
+
+    state[MANUAL_OVERRIDES_KEY] = overrides
+    if payload.get("changed_kind") == "NORMAL":
+        state["mode_choice"] = manual_mode
+    state["_handled_roll_edit_nonce"] = nonce
+
+
 _pending_roll_edit = st.session_state.pop("_pending_roll_edit", None)
-if isinstance(_pending_roll_edit, dict):
-    _pending_nonce = _pending_roll_edit.get("nonce")
-    if _pending_nonce and _pending_nonce != st.session_state.get("_handled_roll_edit_nonce"):
-        for _seg in _pending_roll_edit.get("segments", []):
-            try:
-                _w = max(0.0, min(20000.0, float(_seg.get("width", 0))))
-            except (TypeError, ValueError):
-                continue
-            if _seg.get("kind") == "TEST":
-                _test_no = int(_seg.get("test_no", 0))
-                if 1 <= _test_no <= 5:
-                    st.session_state[f"test_width_{_test_no}"] = _w
-            elif _seg.get("kind") == "NORMAL":
-                _general_idx = int(_seg.get("general_idx", -1))
-                if 0 <= _general_idx < 20:
-                    st.session_state[f"manual_general_fixed_{_general_idx}"] = True
-                    st.session_state[f"manual_general_value_{_general_idx}"] = _w
-                    st.session_state[f"manual_general_widget_{_general_idx}"] = _w
-        if _pending_roll_edit.get("changed_kind") == "NORMAL":
-            st.session_state["mode_choice"] = MANUAL_MODE
-        st.session_state["_handled_roll_edit_nonce"] = _pending_nonce
+_apply_pending_roll_edit(st.session_state, _pending_roll_edit, MANUAL_MODE)
 
 # -----------------------------------------------------------------------------
-# Theme / layout — compact header + isolated SVG renderer + TEST sequence control + standalone embedded in-roll width inputs + fixed expanded sidebar + reduced header and roll spacing; extended width arrows (v16 - manual widths auto-balance all untouched general slits)
+# Theme / layout — compact header + isolated SVG renderer + TEST sequence control + standalone embedded in-roll width inputs + fixed expanded sidebar + reduced header and roll spacing; extended width arrows (v17 - roll and sidebar edits share explicit overrides; untouched widths always rebalance)
 # -----------------------------------------------------------------------------
 CSS = r"""
 <style>
@@ -446,25 +515,7 @@ def _sync_test_roll_to_sidebar(test_no: int) -> None:
     st.session_state[f"test_width_{test_no}"] = float(st.session_state[key])
 
 def _sync_manual_sidebar_to_roll(index: int) -> None:
-    widget_key = f"manual_general_widget_{index}"
-    value = st.session_state.get(widget_key)
-    if value is None:
-        st.session_state[f"manual_general_fixed_{index}"] = False
-        st.session_state.pop(f"manual_general_value_{index}", None)
-        st.session_state.pop(f"roll_general_width_{index}", None)
-    else:
-        numeric_value = float(value)
-        st.session_state[f"manual_general_fixed_{index}"] = True
-        st.session_state[f"manual_general_value_{index}"] = numeric_value
-        st.session_state[f"roll_general_width_{index}"] = numeric_value
-
-def _sync_roll_general_to_manual(index: int) -> None:
-    value = float(st.session_state[f"roll_general_width_{index}"])
-    st.session_state[f"manual_general_fixed_{index}"] = True
-    st.session_state[f"manual_general_value_{index}"] = value
-    st.session_state[f"manual_general_widget_{index}"] = value
-    # Editing a normal slit on the roll switches to custom widths; only this slit is fixed.
-    st.session_state["mode_choice"] = MANUAL_MODE
+    _store_manual_sidebar_override(index)
 
 with st.sidebar:
     st.markdown('<div class="sidebar-title">⚙️ 입력 조건</div>', unsafe_allow_html=True)
@@ -540,57 +591,41 @@ with st.sidebar:
 
     if general_count > 0 and mode.startswith("폭 직접 입력"):
         st.markdown(
-            '<div class="sidebar-note">값을 수정한 지폭은 고정되고, 나머지 지폭은 남은 폭을 자동 균등 분배합니다.</div>',
+            '<div class="sidebar-note">직접 수정한 폭만 고정됩니다. 입력하지 않은 일반 지폭은 남은 폭을 자동으로 균등 분배합니다.</div>',
             unsafe_allow_html=True,
         )
 
-        # Only fields explicitly edited by the user are fixed. All other fields
-        # are recalculated from the remaining usable width on every rerun.
-        manual_target = deckle - n * (left_trim + right_trim) - test_total
-        fixed_flags = []
-        fixed_total = 0.0
-        for i in range(general_count):
-            fixed_key = f"manual_general_fixed_{i}"
-            value_key = f"manual_general_value_{i}"
-            is_fixed = bool(st.session_state.get(fixed_key, False))
-            saved_value = st.session_state.get(value_key)
-            if is_fixed and saved_value is not None:
-                fixed_total += float(saved_value)
-                fixed_flags.append(True)
-            else:
-                st.session_state[fixed_key] = False
-                fixed_flags.append(False)
-
-        auto_count = fixed_flags.count(False)
-        remaining_for_auto = manual_target - fixed_total
-        auto_each = (
-            max(0.0, remaining_for_auto) / auto_count
-            if auto_count > 0 else None
+        overrides = dict(st.session_state.get(MANUAL_OVERRIDES_KEY, {}))
+        manual_values, fixed_indices, auto_indices, distribution_error = _calculate_manual_distribution(
+            target=deckle - n * (left_trim + right_trim) - test_total,
+            count=general_count,
+            overrides=overrides,
         )
 
+        if distribution_error:
+            st.warning(distribution_error)
+
         for i in range(general_count):
-            manual_key = f"manual_general_widget_{i}"
-            value_key = f"manual_general_value_{i}"
-            is_fixed = fixed_flags[i]
+            widget_key = f"manual_general_v17_widget_{i}"
+            is_fixed = i in fixed_indices
+            status_label = "직접 입력" if is_fixed else "자동 균등"
 
-            if is_fixed:
-                # Restore the committed user value if Streamlit cleaned up a hidden widget.
-                st.session_state[manual_key] = float(st.session_state[value_key])
-                status_label = "직접 입력"
-            else:
-                # Auto fields always refresh to the same evenly distributed remainder.
-                st.session_state[manual_key] = float(auto_each or 0.0)
-                status_label = "자동 균등"
-
+            # Always seed the widget from the one authoritative calculation.
+            # A fresh v17 key also avoids stale widget values saved by the v16 implementation.
+            st.session_state[widget_key] = float(manual_values[i])
             value = st.number_input(
                 f"일반 지폭 {i+1} 제품 폭 (mm) · {status_label}",
-                min_value=0.0, max_value=20000.0,
-                step=0.5, format="%.2f",
-                key=manual_key,
+                min_value=0.0,
+                max_value=20000.0,
+                step=0.01,
+                format="%.2f",
+                key=widget_key,
                 on_change=_sync_manual_sidebar_to_roll,
                 args=(i,),
             )
-            manual_values.append(float(value) if value is not None else 0.0)
+
+        # Core calculation uses the derived values, not stale number_input session values.
+        manual_values = [float(v) for v in manual_values]
     elif general_count > 0 and mode.startswith("폭 조합 검색"):
         st.markdown('<div class="sidebar-note">일반 지폭에 적용할 폭 검색 범위를 설정하세요.</div>', unsafe_allow_html=True)
         search_min = st.number_input("최소 폭 (mm)", min_value=1.0, max_value=20000.0, value=500.0, step=10.0, key="search_min")
