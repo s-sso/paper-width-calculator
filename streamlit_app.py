@@ -21,7 +21,14 @@ st.set_page_config(
 # In-roll edits and sidebar edits share one source of truth:
 # only explicitly changed normal widths are stored; every untouched width is recalculated.
 MANUAL_MODE = "폭 직접 입력\n(사용자 지정)"
-MANUAL_OVERRIDES_KEY = "_manual_width_overrides_v17"
+# Migrate sessions created by v17, which stored a literal "\\n" in the radio value.
+if st.session_state.get("mode_choice") == r"폭 직접 입력\n(사용자 지정)":
+    st.session_state["mode_choice"] = MANUAL_MODE
+MANUAL_OVERRIDES_KEY = "_manual_width_overrides_v18"
+if MANUAL_OVERRIDES_KEY not in st.session_state:
+    st.session_state[MANUAL_OVERRIDES_KEY] = dict(
+        st.session_state.get("_manual_width_overrides_v17", {})
+    )
 
 def _calculate_manual_distribution(target: float, count: int, overrides: dict):
     """Return evenly balanced widths, keeping only explicit overrides fixed."""
@@ -70,7 +77,7 @@ def _calculate_manual_distribution(target: float, count: int, overrides: dict):
 
 
 def _store_manual_sidebar_override(index: int) -> None:
-    key = f"manual_general_v17_widget_{index}"
+    key = f"manual_general_v18_widget_{index}"
     try:
         value = float(st.session_state[key])
     except (KeyError, TypeError, ValueError):
@@ -114,7 +121,7 @@ _pending_roll_edit = st.session_state.pop("_pending_roll_edit", None)
 _apply_pending_roll_edit(st.session_state, _pending_roll_edit, MANUAL_MODE)
 
 # -----------------------------------------------------------------------------
-# Theme / layout — compact header + isolated SVG renderer + TEST sequence control + standalone embedded in-roll width inputs + fixed expanded sidebar + reduced header and roll spacing; extended width arrows (v17 - roll and sidebar edits share explicit overrides; untouched widths always rebalance)
+# Theme / layout — compact header + isolated SVG renderer + TEST sequence control + standalone embedded in-roll width inputs + fixed expanded sidebar + reduced header and roll spacing; extended width arrows (v19 - migrate old radio state and recalculate all non-overridden normal slits)
 # -----------------------------------------------------------------------------
 CSS = r"""
 <style>
@@ -606,7 +613,7 @@ with st.sidebar:
             st.warning(distribution_error)
 
         for i in range(general_count):
-            widget_key = f"manual_general_v17_widget_{i}"
+            widget_key = f"manual_general_v18_widget_{i}"
             is_fixed = i in fixed_indices
             status_label = "직접 입력" if is_fixed else "자동 균등"
 
@@ -661,14 +668,15 @@ else:
         each = general_target / general_count
         general_widths = [float(each)] * general_count
     elif mode.startswith("폭 직접 입력"):
-        if len(manual_values) == general_count:
-            general_widths = [float(v) for v in manual_values]
-            input_sum = sum(general_widths)
-            if abs(input_sum - general_target) > 1e-6:
-                calculation_error = (
-                    f"직접 입력한 일반 지폭 합계가 목표와 다릅니다. "
-                    f"일반 지폭 합계는 {general_target:,.1f} mm여야 합니다. 현재 {input_sum:,.1f} mm입니다."
-                )
+        # Single source of truth: calculate again from explicitly edited widths.
+        # This prevents any stale number_input/widget values from leaving the other
+        # normal slits at their previous equal-split values after an in-roll edit.
+        current_overrides = dict(st.session_state.get(MANUAL_OVERRIDES_KEY, {}))
+        general_widths, fixed_indices, auto_indices, calculation_error = _calculate_manual_distribution(
+            target=general_target,
+            count=general_count,
+            overrides=current_overrides,
+        )
     else:
         scale = 2  # half-mm precision
         start_i = int(math.ceil(search_min * scale - 1e-9))

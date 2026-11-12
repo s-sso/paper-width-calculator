@@ -1,1 +1,1 @@
-Replace the existing GitHub streamlit_app.py with this file. Keep requirements.txt and packages.txt unchanged. Only explicit normal-slit edits are retained; all untouched normal slits are rebalanced automatically.
+Replace the existing GitHub streamlit_app.py with the included streamlit_app.py. Keep requirements.txt and packages.txt unchanged. This version migrates the previous manual-mode state and recomputes every non-overridden general slit from the remaining width.
